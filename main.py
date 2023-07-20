@@ -94,6 +94,7 @@ def handle_callback_query(call):
                 bot.send_message(call.message.chat.id, "No saved data found.")
             else:
                 delete_last_data_by_user_id(user_id=call.message.chat.id)
+                bot.send_message(call.message.chat.id, "Last record removed.")
 
 
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith('/'))
@@ -166,7 +167,9 @@ def delete_data_by_user_id(user_id):
 def delete_last_data_by_user_id(user_id):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM user_input WHERE user_id = %s ORDER BY  DESC LIMIT 1', (user_id,))
+    cursor.execute("DELETE FROM user_input WHERE user_id = %s AND (date, time) = "
+                   "(SELECT MAX(date), MAX(time) FROM user_input WHERE user_id = %s)",
+                   (user_id, user_id))
     conn.commit()
     connection_pool.putconn(conn)
 

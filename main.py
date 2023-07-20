@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from psycopg2 import pool
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from telegram_bot_pagination import InlineKeyboardPaginator
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -134,6 +135,7 @@ def handle_text(message):
 def get_command_handler(message):
     user_id = message.from_user.id
     dates = get_saved_dates(user_id)
+    print(dates)
     if dates:
         keyboard = telebot.types.InlineKeyboardMarkup()
         for datestr in dates:
@@ -150,12 +152,54 @@ def get_command_handler(message):
     dates = get_saved_dates(user_id)
     if dates:
         keyboard = telebot.types.InlineKeyboardMarkup()
+        all_time_button = telebot.types.InlineKeyboardButton(text="All Time", callback_data="graph_sum")
+        keyboard.add(all_time_button)
         for datestr in dates:
             button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"pict_{datestr}")
             keyboard.add(button)
+
         bot.send_message(message.chat.id, "Choose a date for graph:", reply_markup=keyboard)
     else:
         bot.send_message(message.chat.id, "No saved data found.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'graph_sum')
+def handle_generate_graph(call):
+    user_id = call.message.chat.id
+    select_user_data_by_id(user_id)
+
+
+def select_user_data_by_id(user_id):
+    conn = connection_pool.getconn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_input WHERE user_id=%s", (user_id,))
+    print(user_id)
+    rows = cursor.fetchall()
+    print(rows)
+    if len(rows) != 0:
+        date = [row[4] for row in rows]
+        systolic = [row[1] for row in rows]
+        diastolic = [row[2] for row in rows]
+        pulse = [row[3] for row in rows]
+        plt.figure()
+        plt.plot(date, systolic, color='red', label='Systolic')
+        plt.plot(date, diastolic, color='blue', label='Diastolic')
+        plt.plot(date, pulse, color='green', label='pulse')
+        plt.xlabel('Time')
+        plt.ylabel('Values')
+        plt.title('Arterial Pressure Summary')
+        plt.legend()
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        bot.send_photo(chat_id=user_id, photo=buffer)
+        buffer.close()
+        plt.close()
+        cursor.close()
+        conn.close()
+
+    else:
+        print('No data found.')
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
@@ -263,6 +307,8 @@ def graph_handler(call):
                     plt.savefig(buffer, format='png')
                     buffer.seek(0)
                     bot.send_photo(chat_id=call.message.chat.id, photo=buffer)
+                    buffer.close()
+                    plt.close()
                 else:
                     bot.send_message(call.message.chat.id, "No data found for the selected date.")
 

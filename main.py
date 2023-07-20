@@ -135,15 +135,68 @@ def handle_text(message):
 def get_command_handler(message):
     user_id = message.from_user.id
     dates = get_saved_dates(user_id)
-    print(dates)
-    if dates:
-        keyboard = telebot.types.InlineKeyboardMarkup()
-        for datestr in dates:
-            button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"date_{datestr}")
-            keyboard.add(button)
-        bot.send_message(message.chat.id, "Choose a date:", reply_markup=keyboard)
-    else:
+    if not dates:
         bot.send_message(message.chat.id, "No saved data found.")
+    else:
+        year_set = set()
+        for date in dates:
+            dt = datetime.strptime(date, '%d-%m-%Y')
+            year = dt.year
+            year_set.add(year)
+        keyboard = telebot.types.InlineKeyboardMarkup()
+        for year in year_set:
+            button = telebot.types.InlineKeyboardButton(text=year, callback_data=f"year_{year}")
+            keyboard.add(button)
+        bot.send_message(message.chat.id, "Select year:", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("year_"))
+def handle_year_selection(call):
+    user_id = call.message.chat.id
+    months = set()
+    for month in get_saved_dates(user_id):
+        dt = datetime.strptime(month, '%d-%m-%Y')
+        month = dt.strftime('%m')
+        months.add(month)
+    sorted_months = sorted(months)
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    for month in sorted_months:
+        button = telebot.types.InlineKeyboardButton(text=month, callback_data=f"month_{month}-{call.data[5:]}")
+        keyboard.add(button)
+    bot.send_message(chat_id=call.message.chat.id, text="Select a month:", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("month_"))
+def handle_month_selection(call):
+    user_id = call.message.chat.id
+    days = set()
+    month = "%" + call.data[6:]
+    for day in get_saved_days(user_id, month):
+        dt = datetime.strptime(day, '%d-%m-%Y')
+        day = dt.strftime('%d')
+        days.add(day)
+    sorted_days = sorted(days)
+    keyboard = telebot.types.InlineKeyboardMarkup(row_width=4)
+    for i in range(0, len(sorted_days), 5):
+        row = sorted_days[i:i + 5]
+        button = [telebot.types.InlineKeyboardButton(text=str(day), callback_data=f"day_{day}-{call.data[6:]}") for day
+                  in row]
+        keyboard.row(*button)
+    bot.send_message(chat_id=call.message.chat.id, text="Select a day:", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("day_"))
+def handle_day_selection(call):
+    user_id = call.message.chat.id
+    selected_date = call.data[4:]
+    data = get_saved_data(user_id, selected_date)
+    if not data:
+        bot.send_message(call.message.chat.id, "No data found for the selected date.")
+    else:
+        response = f"Data saved on {call.data[4:]}:\n"
+        for row in data:
+            response += f"Time: *{row[3]}* | SBP: *{row[0]}* | DBP: *{row[1]}* | P: *{row[2]}*\n"
+        bot.send_message(call.message.chat.id, response, parse_mode="Markdown")
 
 
 @bot.message_handler(commands=['graph'])
@@ -173,9 +226,7 @@ def select_user_data_by_id(user_id):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM user_input WHERE user_id=%s", (user_id,))
-    print(user_id)
     rows = cursor.fetchall()
-    print(rows)
     if len(rows) != 0:
         date = [row[4] for row in rows]
         systolic = [row[1] for row in rows]
@@ -197,9 +248,9 @@ def select_user_data_by_id(user_id):
         plt.close()
         cursor.close()
         conn.close()
-
     else:
-        print('No data found.')
+        bot.send_message(user_id, "No data found for the selected date.")
+
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
@@ -245,6 +296,15 @@ def get_saved_dates(user_id):
     dates = [row[0] for row in cursor.fetchall()]
     connection_pool.putconn(conn)
     return dates
+
+
+def get_saved_days(user_id, month):
+    conn = connection_pool.getconn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT date FROM user_input WHERE user_id = %s AND date LIKE %s", (user_id, month))
+    days = [row[0] for row in cursor.fetchall()]
+    connection_pool.putconn(conn)
+    return days
 
 
 def get_saved_data(user_id, selected_date):

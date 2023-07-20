@@ -2,7 +2,6 @@ import configparser
 import threading
 import time
 from datetime import datetime
-
 import psycopg2
 import telebot
 from psycopg2 import pool

@@ -195,10 +195,8 @@ def handle_text_or_graph_selection(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("text_"))
 def handle_day_selection(call):
-    print(call.data[5:])
     user_id = call.message.chat.id
     selected_date = str(call.data[5:])
-    print("selda", selected_date)
     data = get_saved_data(user_id, selected_date)
     if not data:
         bot.send_message(call.message.chat.id, "No data found for the selected date.")
@@ -334,7 +332,6 @@ def get_saved_days(user_id, month):
 
 
 def get_saved_data(user_id, selected_date):
-    print("sd", selected_date)
     conn = connection_pool.getconn()
     cursor = conn.cursor()
     cursor.execute('SELECT systolic, diastolic, pulse, time FROM user_input WHERE user_id = %s AND date = %s',

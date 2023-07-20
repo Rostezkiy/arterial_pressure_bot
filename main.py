@@ -179,41 +179,50 @@ def handle_month_selection(call):
     keyboard = telebot.types.InlineKeyboardMarkup(row_width=4)
     for i in range(0, len(sorted_days), 5):
         row = sorted_days[i:i + 5]
-        button = [telebot.types.InlineKeyboardButton(text=str(day), callback_data=f"day_{day}-{call.data[6:]}") for day
-                  in row]
+        button = [telebot.types.InlineKeyboardButton(text=str(day),
+                                                     callback_data=f"day_{day}-{call.data[6:]}") for day in row]
         keyboard.row(*button)
     bot.send_message(chat_id=call.message.chat.id, text="Select a day:", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("day_"))
+def handle_text_or_graph_selection(call):
+    keyboard = InlineKeyboardMarkup()
+    keyboard.row(InlineKeyboardButton("Text", callback_data=f"text_{call.data[4:]}"),
+                 InlineKeyboardButton("Graph", callback_data=f"pict_{call.data[4:]}"))
+    bot.send_message(call.message.chat.id, "Text | Graph", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("text_"))
 def handle_day_selection(call):
+    print(call.data[5:])
     user_id = call.message.chat.id
-    selected_date = call.data[4:]
+    selected_date = str(call.data[5:])
+    print("selda", selected_date)
     data = get_saved_data(user_id, selected_date)
     if not data:
         bot.send_message(call.message.chat.id, "No data found for the selected date.")
     else:
-        response = f"Data saved on {call.data[4:]}:\n"
+        response = f"Data saved on {call.data[5:]}:\n"
         for row in data:
             response += f"Time: *{row[3]}* | SBP: *{row[0]}* | DBP: *{row[1]}* | P: *{row[2]}*\n"
         bot.send_message(call.message.chat.id, response, parse_mode="Markdown")
 
 
-@bot.message_handler(commands=['graph'])
-def get_command_handler(message):
-    user_id = message.from_user.id
-    dates = get_saved_dates(user_id)
-    if dates:
-        keyboard = telebot.types.InlineKeyboardMarkup()
-        all_time_button = telebot.types.InlineKeyboardButton(text="All Time", callback_data="graph_sum")
-        keyboard.add(all_time_button)
-        for datestr in dates:
-            button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"pict_{datestr}")
-            keyboard.add(button)
-
-        bot.send_message(message.chat.id, "Choose a date for graph:", reply_markup=keyboard)
-    else:
-        bot.send_message(message.chat.id, "No saved data found.")
+# @bot.message_handler(commands=['graph'])
+# def get_command_handler(message):
+#     user_id = message.from_user.id
+#     dates = get_saved_dates(user_id)
+#     if dates:
+#         keyboard = telebot.types.InlineKeyboardMarkup()
+#         all_time_button = telebot.types.InlineKeyboardButton(text="All Time", callback_data="graph_sum")
+#         keyboard.add(all_time_button)
+#         for datestr in dates:
+#             button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"pict_{datestr}")
+#             keyboard.add(button)
+#         bot.send_message(message.chat.id, "Choose a date for graph:", reply_markup=keyboard)
+#     else:
+#         bot.send_message(message.chat.id, "No saved data found.")
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'graph_sum')
@@ -270,6 +279,40 @@ def get_handler(call):
                     bot.send_message(call.message.chat.id, "No data found for the selected date.")
 
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("pict_"))
+def graph_handler(call):
+    selected_date = call.data[5:]
+    user_id = call.from_user.id
+    dates = get_saved_dates(user_id)
+    if dates:
+        for datestr in dates:
+            if selected_date == datestr:
+                data = get_saved_data(user_id, datestr)
+                if data:
+                    rows = data
+                    x = [row[3] for row in rows]
+                    y1 = [row[0] for row in rows]  # systolic bp
+                    y2 = [row[1] for row in rows]  # diastolic bp
+                    y3 = [row[2] for row in rows]  # pulse
+
+                    plt.plot(x, y1, color='red', label='SBP')
+                    plt.plot(x, y2, color='blue', label='DBP')
+                    plt.plot(x, y3, color='green', label='Pulse')
+                    plt.xlabel('Time')
+                    plt.ylabel('Values')
+                    plt.title('Arterial Pressure')
+                    plt.legend()
+
+                    buffer = BytesIO()
+                    plt.savefig(buffer, format='png')
+                    buffer.seek(0)
+                    bot.send_photo(chat_id=call.message.chat.id, photo=buffer)
+                    buffer.close()
+                    plt.close()
+                else:
+                    bot.send_message(call.message.chat.id, "No data found for the selected date.")
+
+
 def delete_data_by_user_id(user_id):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
@@ -307,6 +350,7 @@ def get_saved_days(user_id, month):
 
 
 def get_saved_data(user_id, selected_date):
+    print("sd", selected_date)
     conn = connection_pool.getconn()
     cursor = conn.cursor()
     cursor.execute('SELECT systolic, diastolic, pulse, time FROM user_input WHERE user_id = %s AND date = %s',
@@ -336,40 +380,6 @@ def enable_handler(call):
 def disable_handler(call):
     set_notify_value(call.message.chat.id, False)
     bot.send_message(call.message.chat.id, "Notification disabled.")
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("pict_"))
-def graph_handler(call):
-    selected_date = call.data[5:]
-    user_id = call.from_user.id
-    dates = get_saved_dates(user_id)
-    if dates:
-        for datestr in dates:
-            if selected_date == datestr:
-                data = get_saved_data(user_id, datestr)
-                if data:
-                    rows = data
-                    x = [row[3] for row in rows]
-                    y1 = [row[0] for row in rows]  # systolic bp
-                    y2 = [row[1] for row in rows]  # diastolic bp
-                    y3 = [row[2] for row in rows]  # pulse
-
-                    plt.plot(x, y1, color='red', label='SBP')
-                    plt.plot(x, y2, color='blue', label='DBP')
-                    plt.plot(x, y3, color='green', label='Pulse')
-                    plt.xlabel('Time')
-                    plt.ylabel('Values')
-                    plt.title('Arterial Pressure')
-                    plt.legend()
-
-                    buffer = BytesIO()
-                    plt.savefig(buffer, format='png')
-                    buffer.seek(0)
-                    bot.send_photo(chat_id=call.message.chat.id, photo=buffer)
-                    buffer.close()
-                    plt.close()
-                else:
-                    bot.send_message(call.message.chat.id, "No data found for the selected date.")
 
 
 def set_notify_time(message):

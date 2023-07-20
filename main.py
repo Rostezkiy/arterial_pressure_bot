@@ -8,8 +8,7 @@ import telebot
 from matplotlib import pyplot as plt
 from psycopg2 import pool
 from telebot import types
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
-from telegram_bot_pagination import InlineKeyboardPaginator
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -58,7 +57,8 @@ def start(message):
                      "\n/delete - clear your data"
                      "\n/graph - create a graph based on your data"
                      "\n/notify - configure notification"
-                     "\n/start - view this information, click this if you need to reset keyboard buttons and notify time")
+                     "\n/start - view this information, click this "
+                     "if you need to reset keyboard buttons and notify time")
     set_notify_value(message.chat.id, False)
     btn_get = types.KeyboardButton('/get')
     btn_graph = types.KeyboardButton('/graph')
@@ -250,7 +250,6 @@ def select_user_data_by_id(user_id):
         conn.close()
     else:
         bot.send_message(user_id, "No data found for the selected date.")
-
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))

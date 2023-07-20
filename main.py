@@ -2,11 +2,13 @@ import configparser
 import threading
 import time
 from datetime import datetime
+from io import BytesIO
 import psycopg2
 import telebot
+from matplotlib import pyplot as plt
 from psycopg2 import pool
 from telebot import types
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -47,18 +49,22 @@ def create_notification_table():
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id,
-                     "Arterial pressure monitoring enabled! \nTo start please enter three values separated by spaces. "
+                     "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
                      "\nSystolic | Diastolic | Pulse. "
                      "\nExample: \"120 80 60\" \n--- "
                      "\nAvailable commands: "
-                     "\n/get - get information by date "
-                     "\n/delete - clear your data")
+                     "\n/get - get information by date"
+                     "\n/delete - clear your data"
+                     "\n/graph - create a graph based on your data"
+                     "\n/notify - configure notification"
+                     "\n/start - view this information, click this if you need to reset keyboard buttons and notify time")
     set_notify_value(message.chat.id, False)
-    keyboard = types.ReplyKeyboardMarkup(row_width=3)
     btn_get = types.KeyboardButton('/get')
+    btn_graph = types.KeyboardButton('/graph')
     btn_ntf = types.KeyboardButton('/notify')
     btn_del = types.KeyboardButton('/delete')
-    keyboard.add(btn_ntf, btn_get, btn_del)
+    keyboard = types.ReplyKeyboardMarkup(row_width=2)
+    keyboard.add(btn_get, btn_graph, btn_ntf, btn_del)
     bot.send_message(message.chat.id, "Input information or click on buttons.", reply_markup=keyboard)
 
 
@@ -138,6 +144,20 @@ def get_command_handler(message):
         bot.send_message(message.chat.id, "No saved data found.")
 
 
+@bot.message_handler(commands=['graph'])
+def get_command_handler(message):
+    user_id = message.from_user.id
+    dates = get_saved_dates(user_id)
+    if dates:
+        keyboard = telebot.types.InlineKeyboardMarkup()
+        for datestr in dates:
+            button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"pict_{datestr}")
+            keyboard.add(button)
+        bot.send_message(message.chat.id, "Choose a date for graph:", reply_markup=keyboard)
+    else:
+        bot.send_message(message.chat.id, "No saved data found.")
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
 def get_handler(call):
     selected_date = call.data[5:]
@@ -213,6 +233,38 @@ def enable_handler(call):
 def disable_handler(call):
     set_notify_value(call.message.chat.id, False)
     bot.send_message(call.message.chat.id, "Notification disabled.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("pict_"))
+def graph_handler(call):
+    selected_date = call.data[5:]
+    user_id = call.from_user.id
+    dates = get_saved_dates(user_id)
+    if dates:
+        for datestr in dates:
+            if selected_date == datestr:
+                data = get_saved_data(user_id, datestr)
+                if data:
+                    rows = data
+                    x = [row[3] for row in rows]
+                    y1 = [row[0] for row in rows]  # systolic bp
+                    y2 = [row[1] for row in rows]  # diastolic bp
+                    y3 = [row[2] for row in rows]  # pulse
+
+                    plt.plot(x, y1, color='red', label='SBP')
+                    plt.plot(x, y2, color='blue', label='DBP')
+                    plt.plot(x, y3, color='green', label='Pulse')
+                    plt.xlabel('Time')
+                    plt.ylabel('Values')
+                    plt.title('Arterial Pressure')
+                    plt.legend()
+
+                    buffer = BytesIO()
+                    plt.savefig(buffer, format='png')
+                    buffer.seek(0)
+                    bot.send_photo(chat_id=call.message.chat.id, photo=buffer)
+                else:
+                    bot.send_message(call.message.chat.id, "No data found for the selected date.")
 
 
 def set_notify_time(message):

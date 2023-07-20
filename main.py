@@ -209,22 +209,6 @@ def handle_day_selection(call):
         bot.send_message(call.message.chat.id, response, parse_mode="Markdown")
 
 
-# @bot.message_handler(commands=['graph'])
-# def get_command_handler(message):
-#     user_id = message.from_user.id
-#     dates = get_saved_dates(user_id)
-#     if dates:
-#         keyboard = telebot.types.InlineKeyboardMarkup()
-#         all_time_button = telebot.types.InlineKeyboardButton(text="All Time", callback_data="graph_sum")
-#         keyboard.add(all_time_button)
-#         for datestr in dates:
-#             button = telebot.types.InlineKeyboardButton(text=datestr, callback_data=f"pict_{datestr}")
-#             keyboard.add(button)
-#         bot.send_message(message.chat.id, "Choose a date for graph:", reply_markup=keyboard)
-#     else:
-#         bot.send_message(message.chat.id, "No saved data found.")
-
-
 @bot.callback_query_handler(func=lambda call: call.data == 'graph_sum')
 def handle_generate_graph(call):
     user_id = call.message.chat.id

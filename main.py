@@ -59,8 +59,9 @@ def start(message):
                      "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
                      "\nSystolic | Diastolic | Pulse. "
                      "\nExample: \"120 80 60\" \n--- "
-                     "\nAvailable commands: "
-                     "\n/get - get information by date, text or graph"
+                     "\nAvailable commands:"
+                     "\n/get - get information by date"
+                     "\n/graph - get graph based on your information"
                      "\n/delete - clear your data"
                      "\n/notify - configure notification"
                      "\n/help - view help information"
@@ -68,10 +69,11 @@ def start(message):
                      "if you need to reload keyboard buttons")
     set_notify_value(message.chat.id, False)
     btn_get = types.KeyboardButton('/get')
+    btn_graph = types.KeyboardButton('/graph')
     btn_ntf = types.KeyboardButton('/notify')
     btn_del = types.KeyboardButton('/delete')
     keyboard = types.ReplyKeyboardMarkup(row_width=2)
-    keyboard.add(btn_ntf, btn_del, btn_get)
+    keyboard.add(btn_ntf, btn_del, btn_get, btn_graph)
     bot.send_message(message.chat.id, "Input information or click on buttons.", reply_markup=keyboard)
 
 
@@ -89,8 +91,9 @@ def help_message(message):
                      "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
                      "\nSystolic | Diastolic | Pulse. "
                      "\nExample: \"120 80 60\" \n--- "
-                     "\nAvailable commands: \n"
-                     "\n/get - get information by date, text or graph"
+                     "\nAvailable commands:"
+                     "\n/get -- get information by date"
+                     "\n/graph -- get graph based on your information"
                      "\n/delete -- clear your data"
                      "\n/notify -- configure notification"
                      "\n/help -- view help information"
@@ -101,10 +104,11 @@ def help_message(message):
 @bot.message_handler(commands=['reset'])
 def reset(message):
     btn_get = types.KeyboardButton('/get')
+    btn_graph = types.KeyboardButton('/graph')
     btn_ntf = types.KeyboardButton('/notify')
     btn_del = types.KeyboardButton('/delete')
     keyboard = types.ReplyKeyboardMarkup(row_width=2)
-    keyboard.add(btn_ntf, btn_del, btn_get)
+    keyboard.add(btn_ntf, btn_del, btn_get, btn_graph)
     bot.send_message(message.chat.id, "Keyboard buttons reloaded.", reply_markup=keyboard)
 
 
@@ -177,12 +181,45 @@ def get_command_handler(message):
             year_set.add(year)
         keyboard = telebot.types.InlineKeyboardMarkup()
         for year in year_set:
+            button = telebot.types.InlineKeyboardButton(text=year, callback_data=f"year_text_{year}")
+            keyboard.add(button)
+        bot.send_message(message.chat.id, "Select year:", reply_markup=keyboard)
+
+@bot.message_handler(commands=['graph'])
+def graph_command_handler(message):
+    user_id = message.from_user.id
+    dates = get_saved_dates(user_id)
+    if not dates:
+        bot.send_message(message.chat.id, "No saved data found.")
+    else:
+        year_set = set()
+        for date in dates:
+            dt = datetime.strptime(date, '%d-%m-%Y')
+            year = dt.year
+            year_set.add(year)
+        keyboard = telebot.types.InlineKeyboardMarkup()
+        for year in year_set:
             button = telebot.types.InlineKeyboardButton(text=year, callback_data=f"year_{year}")
             keyboard.add(button)
         bot.send_message(message.chat.id, "Select year:", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("year_text_"))
+def handle_year_selection(call):
+    user_id = call.message.chat.id
+    months = set()
+    for month in get_saved_dates(user_id):
+        dt = datetime.strptime(month, '%d-%m-%Y')
+        month = dt.strftime('%m')
+        months.add(month)
+    sorted_months = sorted(months)
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    for month in sorted_months:
+        button = telebot.types.InlineKeyboardButton(text=month, callback_data=f"month_text_{month}-{call.data[10:]}")
+        keyboard.add(button)
+    bot.send_message(chat_id=call.message.chat.id, text="Select a month:", reply_markup=keyboard)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("draw_year_"))
 def handle_year_selection(call):
     user_id = call.message.chat.id
     months = set()
@@ -212,7 +249,26 @@ def handle_month_selection(call):
     for i in range(0, len(sorted_days), 5):
         row = sorted_days[i:i + 5]
         button = [telebot.types.InlineKeyboardButton(text=str(day),
-                                                     callback_data=f"day_{day}-{call.data[11:]}") for day in row]
+                                                     callback_data=f"text_{day}-{call.data[11:]}") for day in row]
+        keyboard.row(*button)
+    bot.send_message(chat_id=call.message.chat.id, text="Select a day:", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("draw_days_"))
+def handle_month_selection(call):
+    user_id = call.message.chat.id
+    days = set()
+    month = "%" + call.data[10:]
+    for day in get_saved_days(user_id, month):
+        dt = datetime.strptime(day, '%d-%m-%Y')
+        day = dt.strftime('%d')
+        days.add(day)
+    sorted_days = sorted(days)
+    keyboard = telebot.types.InlineKeyboardMarkup(row_width=4)
+    for i in range(0, len(sorted_days), 5):
+        row = sorted_days[i:i + 5]
+        button = [telebot.types.InlineKeyboardButton(text=str(day),
+                                                     callback_data=f"pict_{day}-{call.data[10:]}") for day in row]
         keyboard.row(*button)
     bot.send_message(chat_id=call.message.chat.id, text="Select a day:", reply_markup=keyboard)
 
@@ -228,17 +284,17 @@ def handle_text_or_graph_selection(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("month_"))
 def handle_text_or_graph_selection(call):
     keyboard = InlineKeyboardMarkup()
-    keyboard.row(InlineKeyboardButton("Select day", callback_data=f"month_text_{call.data[6:]}"),
-                 InlineKeyboardButton("Monthly graph", callback_data=f"draw_month_{call.data[6:]}"))
-    bot.send_message(call.message.chat.id, "Next or Graph", reply_markup=keyboard)
+    keyboard.row(InlineKeyboardButton("Select day", callback_data=f"draw_days_{call.data[6:]}"),
+                 InlineKeyboardButton("Graph ", callback_data=f"draw_month_{call.data[6:]}"))
+    bot.send_message(call.message.chat.id, "Select day or Monthly graph", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("year_"))
 def handle_text_or_graph_selection(call):
     keyboard = InlineKeyboardMarkup()
-    keyboard.row(InlineKeyboardButton("Select month", callback_data=f"year_text_{call.data[5:]}"),
-                 InlineKeyboardButton("Yearly graph", callback_data="graph_sum"))
-    bot.send_message(call.message.chat.id, "Next or Graph", reply_markup=keyboard)
+    keyboard.row(InlineKeyboardButton("Select month", callback_data=f"draw_year_{call.data[5:]}"),
+                 InlineKeyboardButton("Graph", callback_data="graph_sum"))
+    bot.send_message(call.message.chat.id, "Select month or Graph for the year", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("text_"))

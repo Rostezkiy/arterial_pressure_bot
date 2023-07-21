@@ -55,26 +55,7 @@ def create_notification_table():
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id,
-                     "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
-                     "\nSystolic | Diastolic | Pulse. "
-                     "\nExample: \"120 80 60\" \n--- "
-                     "\nAvailable commands:"
-                     "\n/get - get information by date"
-                     "\n/graph - get graph based on your information"
-                     "\n/delete - clear your data"
-                     "\n/notify - configure notification"
-                     "\n/help - view help information"
-                     "\n/reset - click this "
-                     "if you need to reload keyboard buttons")
-    set_notify_value(message.chat.id, False)
-    btn_get = types.KeyboardButton('/get')
-    btn_graph = types.KeyboardButton('/graph')
-    btn_ntf = types.KeyboardButton('/notify')
-    btn_del = types.KeyboardButton('/delete')
-    keyboard = types.ReplyKeyboardMarkup(row_width=2)
-    keyboard.add(btn_ntf, btn_del, btn_get, btn_graph)
-    bot.send_message(message.chat.id, "Input information or click on buttons.", reply_markup=keyboard)
+    start_app(message)
 
 
 @bot.message_handler(commands=['delete'])
@@ -92,24 +73,46 @@ def help_message(message):
                      "\nSystolic | Diastolic | Pulse. "
                      "\nExample: \"120 80 60\" \n--- "
                      "\nAvailable commands:"
+                     "\n/help -- view help information"
                      "\n/get -- get information by date"
                      "\n/graph -- get graph based on your information"
-                     "\n/delete -- clear your data"
                      "\n/notify -- configure notification"
-                     "\n/help -- view help information"
                      "\n/reset -- click this "
-                     "if you need to reload keyboard buttons")
+                     "if you need to reload keyboard buttons"
+                     "\n/delete -- clear your data")
+    reload(message)
 
 
 @bot.message_handler(commands=['reset'])
 def reset(message):
+    reload(message)
+
+
+def start_app(message):
+    bot.send_message(message.chat.id,
+                     "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
+                     "\nSystolic | Diastolic | Pulse. "
+                     "\nExample: \"120 80 60\" \n--- "
+                     "\nAvailable commands:"
+                     "\n/help -- view help information"
+                     "\n/get -- get information by date"
+                     "\n/graph -- get graph based on your information"
+                     "\n/notify -- configure notification"
+                     "\n/reset -- click this "
+                     "if you need to reload keyboard buttons"
+                     "\n/delete -- clear your data")
+    set_notify_value(message.chat.id, False)
+    reload(message)
+
+
+def reload(message):
     btn_get = types.KeyboardButton('/get')
     btn_graph = types.KeyboardButton('/graph')
     btn_ntf = types.KeyboardButton('/notify')
     btn_del = types.KeyboardButton('/delete')
     keyboard = types.ReplyKeyboardMarkup(row_width=2)
     keyboard.add(btn_ntf, btn_del, btn_get, btn_graph)
-    bot.send_message(message.chat.id, "Keyboard buttons reloaded.", reply_markup=keyboard)
+    bot.send_message(message.chat.id, "Input information or click on buttons.", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete"))
@@ -185,6 +188,7 @@ def get_command_handler(message):
             keyboard.add(button)
         bot.send_message(message.chat.id, "Select year:", reply_markup=keyboard)
 
+
 @bot.message_handler(commands=['graph'])
 def graph_command_handler(message):
     user_id = message.from_user.id
@@ -218,6 +222,7 @@ def handle_year_selection(call):
         button = telebot.types.InlineKeyboardButton(text=month, callback_data=f"month_text_{month}-{call.data[10:]}")
         keyboard.add(button)
     bot.send_message(chat_id=call.message.chat.id, text="Select a month:", reply_markup=keyboard)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("draw_year_"))
 def handle_year_selection(call):
@@ -493,6 +498,9 @@ def get_saved_month_data(user_id, selected_date):
 
 @bot.message_handler(commands=['notify'])
 def notify_handler(message):
+    ntf_time = get_notify_value(message.chat.id)
+    if ntf_time:
+        bot.send_message(message.chat.id, f"Notification is enabled at: {str(ntf_time)[:5]}")
     keyboard = types.InlineKeyboardMarkup()
     button_enable = types.InlineKeyboardButton('Enable', callback_data='enable')
     button_disable = types.InlineKeyboardButton('Disable', callback_data='disable')
@@ -532,13 +540,13 @@ def send_notification(user_id, notify_time):
 def get_notify_value(user_id):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
-    cursor.execute("SELECT enabled FROM notifications WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT notify_time, enabled FROM notifications WHERE user_id=%s", (user_id,))
     result = cursor.fetchone()
     connection_pool.putconn(conn)
-    if result is None:
-        return False
+    if result[1]:
+        return result[0]
     else:
-        return bool(result[0])
+        return False
 
 
 def set_notify_value(user_id, value):

@@ -53,19 +53,18 @@ def start(message):
                      "\nSystolic | Diastolic | Pulse. "
                      "\nExample: \"120 80 60\" \n--- "
                      "\nAvailable commands: "
-                     "\n/get - get information by date"
+                     "\n/get - get information by date, text or graph"
                      "\n/delete - clear your data"
-                     "\n/graph - create a graph based on your data"
                      "\n/notify - configure notification"
-                     "\n/start - view this information, click this "
-                     "if you need to reset keyboard buttons and notify time")
+                     "\n/help - view help information"
+                     "\n/reset - click this "
+                     "if you need to reload keyboard buttons")
     set_notify_value(message.chat.id, False)
     btn_get = types.KeyboardButton('/get')
-    btn_graph = types.KeyboardButton('/graph')
     btn_ntf = types.KeyboardButton('/notify')
     btn_del = types.KeyboardButton('/delete')
     keyboard = types.ReplyKeyboardMarkup(row_width=2)
-    keyboard.add(btn_get, btn_graph, btn_ntf, btn_del)
+    keyboard.add(btn_ntf, btn_del, btn_get)
     bot.send_message(message.chat.id, "Input information or click on buttons.", reply_markup=keyboard)
 
 
@@ -75,6 +74,31 @@ def delete(message):
     keyboard.row(InlineKeyboardButton("Clear data", callback_data="delete_all"),
                  InlineKeyboardButton("Delete last record", callback_data="delete_last"))
     bot.send_message(message.chat.id, "Delete all information or last record?", reply_markup=keyboard)
+
+
+@bot.message_handler(commands=['help'])
+def help_message(message):
+    bot.send_message(message.chat.id,
+                     "Arterial Pressure Monitoring.\nTo start please enter three values separated by spaces. "
+                     "\nSystolic | Diastolic | Pulse. "
+                     "\nExample: \"120 80 60\" \n--- "
+                     "\nAvailable commands: \n"
+                     "\n/get - get information by date, text or graph"
+                     "\n/delete -- clear your data"
+                     "\n/notify -- configure notification"
+                     "\n/help -- view help information"
+                     "\n/reset -- click this "
+                     "if you need to reload keyboard buttons")
+
+
+@bot.message_handler(commands=['reset'])
+def reset(message):
+    btn_get = types.KeyboardButton('/get')
+    btn_ntf = types.KeyboardButton('/notify')
+    btn_del = types.KeyboardButton('/delete')
+    keyboard = types.ReplyKeyboardMarkup(row_width=2)
+    keyboard.add(btn_ntf, btn_del, btn_get)
+    bot.send_message(message.chat.id, "Keyboard buttons reloaded.", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delete"))
@@ -150,7 +174,7 @@ def get_command_handler(message):
         bot.send_message(message.chat.id, "Select year:", reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("year_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("year_text_"))
 def handle_year_selection(call):
     user_id = call.message.chat.id
     months = set()
@@ -161,16 +185,16 @@ def handle_year_selection(call):
     sorted_months = sorted(months)
     keyboard = telebot.types.InlineKeyboardMarkup()
     for month in sorted_months:
-        button = telebot.types.InlineKeyboardButton(text=month, callback_data=f"month_{month}-{call.data[5:]}")
+        button = telebot.types.InlineKeyboardButton(text=month, callback_data=f"month_{month}-{call.data[10:]}")
         keyboard.add(button)
     bot.send_message(chat_id=call.message.chat.id, text="Select a month:", reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("month_"))
+@bot.callback_query_handler(func=lambda call: call.data.startswith("month_text_"))
 def handle_month_selection(call):
     user_id = call.message.chat.id
     days = set()
-    month = "%" + call.data[6:]
+    month = "%" + call.data[11:]
     for day in get_saved_days(user_id, month):
         dt = datetime.strptime(day, '%d-%m-%Y')
         day = dt.strftime('%d')
@@ -180,7 +204,7 @@ def handle_month_selection(call):
     for i in range(0, len(sorted_days), 5):
         row = sorted_days[i:i + 5]
         button = [telebot.types.InlineKeyboardButton(text=str(day),
-                                                     callback_data=f"day_{day}-{call.data[6:]}") for day in row]
+                                                     callback_data=f"day_{day}-{call.data[11:]}") for day in row]
         keyboard.row(*button)
     bot.send_message(chat_id=call.message.chat.id, text="Select a day:", reply_markup=keyboard)
 
@@ -190,7 +214,23 @@ def handle_text_or_graph_selection(call):
     keyboard = InlineKeyboardMarkup()
     keyboard.row(InlineKeyboardButton("Text", callback_data=f"text_{call.data[4:]}"),
                  InlineKeyboardButton("Graph", callback_data=f"pict_{call.data[4:]}"))
-    bot.send_message(call.message.chat.id, "Text | Graph", reply_markup=keyboard)
+    bot.send_message(call.message.chat.id, "Text or Graph", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("month_"))
+def handle_text_or_graph_selection(call):
+    keyboard = InlineKeyboardMarkup()
+    keyboard.row(InlineKeyboardButton("Select day", callback_data=f"month_text_{call.data[6:]}"),
+                 InlineKeyboardButton("Monthly graph", callback_data=f"draw_month_{call.data[6:]}"))
+    bot.send_message(call.message.chat.id, "Next or Graph", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("year_"))
+def handle_text_or_graph_selection(call):
+    keyboard = InlineKeyboardMarkup()
+    keyboard.row(InlineKeyboardButton("Select month", callback_data=f"year_text_{call.data[5:]}"),
+                 InlineKeyboardButton("Yearly graph", callback_data="graph_sum"))
+    bot.send_message(call.message.chat.id, "Next or Graph", reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("text_"))
@@ -276,7 +316,6 @@ def graph_handler(call):
                     y1 = [row[0] for row in rows]  # systolic bp
                     y2 = [row[1] for row in rows]  # diastolic bp
                     y3 = [row[2] for row in rows]  # pulse
-
                     plt.plot(x, y1, color='red', label='SBP')
                     plt.plot(x, y2, color='blue', label='DBP')
                     plt.plot(x, y3, color='green', label='Pulse')
@@ -284,7 +323,6 @@ def graph_handler(call):
                     plt.ylabel('Values')
                     plt.title('Arterial Pressure')
                     plt.legend()
-
                     buffer = BytesIO()
                     plt.savefig(buffer, format='png')
                     buffer.seek(0)
@@ -293,6 +331,38 @@ def graph_handler(call):
                     plt.close()
                 else:
                     bot.send_message(call.message.chat.id, "No data found for the selected date.")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("draw_month_"))
+def graph_handler(call):
+    format_date = "%" + call.data[11:]
+    user_id = call.message.chat.id
+    dates = get_saved_days(user_id, format_date)
+    if dates:
+        data = get_saved_month_data(user_id, format_date)
+        if data:
+            rows = data
+            x = [row[3][:2] for row in rows]
+            y1 = [row[0] for row in rows]  # systolic bp
+            y2 = [row[1] for row in rows]  # diastolic bp
+            y3 = [row[2] for row in rows]  # pulse
+            plt.plot(x, y1, color='red', label='SBP')
+            plt.plot(x, y2, color='blue', label='DBP')
+            plt.plot(x, y3, color='green', label='Pulse')
+            plt.xlabel('Date')
+            plt.ylabel('Values')
+            plt.title('Arterial Pressure')
+            plt.legend()
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png')
+            buffer.seek(0)
+            bot.send_photo(chat_id=call.message.chat.id, photo=buffer)
+            buffer.close()
+            plt.close()
+        else:
+            bot.send_message(call.message.chat.id, "No data found for the selected date.")
+    else:
+        bot.send_message(call.message.chat.id, "No data found for the selected date.")
 
 
 def delete_data_by_user_id(user_id):
@@ -335,6 +405,16 @@ def get_saved_data(user_id, selected_date):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
     cursor.execute('SELECT systolic, diastolic, pulse, time FROM user_input WHERE user_id = %s AND date = %s',
+                   (user_id, selected_date))
+    data = cursor.fetchall()
+    connection_pool.putconn(conn)
+    return data
+
+
+def get_saved_month_data(user_id, selected_date):
+    conn = connection_pool.getconn()
+    cursor = conn.cursor()
+    cursor.execute('SELECT systolic, diastolic, pulse, date FROM user_input WHERE user_id = %s AND date like %s',
                    (user_id, selected_date))
     data = cursor.fetchall()
     connection_pool.putconn(conn)

@@ -28,8 +28,15 @@ bot = telebot.TeleBot(config.get('TG', 'token'))
 def create_table():
     conn = connection_pool.getconn()
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS user_input
-                      (user_id INTEGER, systolic INTEGER, diastolic INTEGER, pulse INTEGER, date TEXT, time TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS user_input(
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER, 
+        systolic INTEGER, 
+        diastolic INTEGER, 
+        pulse INTEGER, 
+        date TEXT, 
+        time TEXT)'''
+                   )
     conn.commit()
     connection_pool.putconn(conn)
 
@@ -134,7 +141,7 @@ def handle_text(message):
     cursor = conn.cursor()
     input_values = message.text.split()
     if len(input_values) != 3:
-        bot.send_message(message.chat.id, 'Please enter three values separated by spaces. '
+        bot.send_message(message.chat.id, 'Please enter 3 values separated by spaces. '
                                           '\nSystolic | Diastolic | Pulse. '
                                           '\nExample: "120 80 60"')
     else:
@@ -144,7 +151,8 @@ def handle_text(message):
             if 0 <= systolic <= 300 and 0 <= diastolic <= 300 and 0 <= pulse <= 300:
                 current_date = datetime.now().strftime('%d-%m-%Y')
                 current_time = datetime.now().strftime("%H:%M")
-                cursor.execute('INSERT INTO user_input VALUES (%s, %s, %s, %s, %s, %s)',
+                cursor.execute('INSERT INTO user_input (user_id, systolic, diastolic, pulse, date, time) '
+                               'VALUES (%s, %s, %s, %s, %s, %s)',
                                (user_id, systolic, diastolic, pulse, current_date, current_time))
                 conn.commit()
                 bot.send_message(message.chat.id, 'Information saved successfully.')
@@ -376,9 +384,15 @@ def delete_data_by_user_id(user_id):
 def delete_last_data_by_user_id(user_id):
     conn = connection_pool.getconn()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM user_input WHERE user_id = %s AND (date, time) = "
-                   "(SELECT MAX(date), MAX(time) FROM user_input WHERE user_id = %s)",
-                   (user_id, user_id))
+    query = """
+        DELETE FROM user_input
+        WHERE id = (
+            SELECT MAX(id)
+            FROM user_input
+            WHERE user_id = %s
+        ) AND user_id = %s;
+    """
+    cursor.execute(query, (user_id, user_id))
     conn.commit()
     connection_pool.putconn(conn)
 

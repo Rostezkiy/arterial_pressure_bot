@@ -6,12 +6,42 @@ from io import BytesIO
 import psycopg2
 import telebot
 from matplotlib import pyplot as plt
-from psycopg2 import pool
+from psycopg2 import pool, sql
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 config = configparser.ConfigParser()
 config.read('config.ini')
+bot = telebot.TeleBot(config.get('TG', 'token'))
+
+
+def connect_to_db():
+    database = config.get('DB', 'database')
+    conn = psycopg2.connect(dbname='postgres', user='postgres', password='postgres', host=config.get('DB', 'host'),
+                            port=config.get('DB', 'port'))
+    conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+
+    cursor = conn.cursor()
+    # Check if database exists and create it if not
+    cursor.execute("SELECT datname FROM pg_database;")
+    list_database = cursor.fetchall()
+    if database not in list_database:
+        cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+
+    cursor.close()
+    conn.close()
+
+    # Reconnecting to the new database
+    conn = psycopg2.connect(host=config.get('DB', 'host'),
+                            port=config.get('DB', 'port'),
+                            dbname=config.get('DB', 'database'),
+                            user=config.get('DB', 'user'),
+                            password=config.get('DB', 'password'))
+    return conn
+
+
+connect_to_db()
 
 connection_pool = psycopg2.pool.SimpleConnectionPool(
     minconn=config.get('DB', 'minconn'),
@@ -22,7 +52,6 @@ connection_pool = psycopg2.pool.SimpleConnectionPool(
     user=config.get('DB', 'user'),
     password=config.get('DB', 'password')
 )
-bot = telebot.TeleBot(config.get('TG', 'token'))
 
 
 def create_table():
@@ -590,7 +619,6 @@ def run_notify_loop():
 
 create_table()
 create_notification_table()
-
 thread = threading.Thread(target=run_notify_loop)
 thread.start()
 

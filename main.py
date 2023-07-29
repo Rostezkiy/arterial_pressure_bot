@@ -582,17 +582,22 @@ def notify_loop():
     connection_pool.putconn(conn)
 
 
-create_table()
-create_notification_table()
-
-
 def run_notify_loop():
     while True:
         notify_loop()
         time.sleep(60)
 
 
+create_table()
+create_notification_table()
+
 thread = threading.Thread(target=run_notify_loop)
 thread.start()
 
-bot.polling()
+try:
+    bot.polling()
+except Exception as e:
+    print(e)
+    bot.close()
+finally:
+    bot.polling()

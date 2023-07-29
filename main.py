@@ -1,4 +1,5 @@
 import configparser
+import logging
 import threading
 import time
 from datetime import datetime
@@ -11,9 +12,11 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+logging.debug("Starting application.")
 config = configparser.ConfigParser()
 config.read('config.ini')
 bot = telebot.TeleBot(config.get('TG', 'token'))
+logging.debug("Configuration done.")
 
 
 def connect_to_db():
@@ -25,10 +28,12 @@ def connect_to_db():
     cursor = conn.cursor()
     # Check if database exists and create it if not
     cursor.execute("SELECT datname FROM pg_database;")
-    list_database = cursor.fetchall()
+    list_database = [item[0] for item in cursor.fetchall()]
     if database not in list_database:
         cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
-
+        logging.debug("Creating DB.")
+    else:
+        logging.debug("DB already created.")
     cursor.close()
     conn.close()
 
@@ -64,8 +69,7 @@ def create_table():
         diastolic INTEGER, 
         pulse INTEGER, 
         date TEXT, 
-        time TEXT)'''
-                   )
+        time TEXT)''')
     conn.commit()
     connection_pool.putconn(conn)
 
@@ -131,6 +135,7 @@ def start_app(message):
                      "if you need to reload keyboard buttons"
                      "\n/delete -- clear your data")
     set_notify_value(message.chat.id, False)
+    logging.debug(f"User {message.chat.id} activated bot.")
     reload(message)
 
 
@@ -617,15 +622,20 @@ def run_notify_loop():
         time.sleep(60)
 
 
+logging.debug("Checking tables.")
 create_table()
 create_notification_table()
+logging.debug("Tables check done.")
 thread = threading.Thread(target=run_notify_loop)
 thread.start()
+logging.debug("Notify thread started.")
 
 try:
     bot.polling()
+    logging.debug("Bot main thread started.")
 except Exception as e:
     print(e)
     bot.close()
 finally:
     bot.polling()
+    logging.warning(f"Restarted bot. Exception: {str(e)} ")
